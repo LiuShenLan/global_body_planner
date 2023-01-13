@@ -20,6 +20,7 @@ find_package(catkin REQUIRED COMPONENTS
   message_generation
   grid_map_core
   grid_map_ros
+  geometry_msgs
 )
 
 ################################################
@@ -70,7 +71,8 @@ set(MY_LIB_SOURCES
   src/rrt_star_connect.cpp
   src/rviz_interface.cpp
   src/fast_terrain_map.cpp
-  src/terrain_map_publisher.cpp)
+  src/terrain_map_publisher.cpp
+  src/state_publisher.cpp)
 
 # Declare a C++ library
 add_library(${PROJECT_NAME}
@@ -128,3 +130,13 @@ target_link_libraries(terrain_map_publisher_node
 catkin_add_gtest(${PROJECT_NAME}-test test/test_global_body_planner.cpp)
 target_link_libraries(${PROJECT_NAME}-test ${PROJECT_NAME} ${catkin_LIBRARIES})
 
+#####################
+## state publisher ##
+#####################
+
+add_executable(state_publisher src/state_publisher.cpp)
+## Specify libraries to link a library or executable target against
+target_link_libraries(state_publisher
+  ${PROJECT_NAME}
+  ${catkin_LIBRARIES}
+)

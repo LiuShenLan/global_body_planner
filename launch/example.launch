@@ -1,20 +1,26 @@
 <launch>
+        <!-- 加载参数 -->
         <!-- Load params from the yaml file -->
         <rosparam command="load" file="$(find global_body_planner)/config/params.yaml"/>
 
-        <!-- Launch the terrain map publisher -->
-        <node pkg="global_body_planner" type="terrain_map_publisher_node" name="terrain_map_publisher" output="screen"/>
-                
-        <!-- Launch the global body planner node -->
+        <!-- 使用csv文件加载高程图或创建高程图，与下一行二选一  Launch the terrain map publisher -->
+        <!-- <node pkg="global_body_planner" type="terrain_map_publisher_node" name="terrain_map_publisher" output="screen"/> -->
+        <!-- 加载本地高程图，与上一行二选一 -->
+        <node pkg="rosbag" type="play" name="elemap_player" args=" -l $(find global_body_planner)/data/world/mine/difficult2.bag"/>
+
+        <!-- 发布起止点位置 -->
+        <include file="$(find global_body_planner)/launch/state_publisher.launch" />
+
+        <!-- 高程图规划节点 Launch the global body planner node -->
         <node name="global_body_planner" pkg="global_body_planner" type="global_body_planner_node" output="screen"/>
 
-		<!-- Launch the grid map visualizer -->
-		<node pkg="grid_map_visualization" type="grid_map_visualization" name="grid_map_visualization" output="screen"/>
+		<!-- 高程图可视化节点，这节点似乎没用   Launch the grid map visualizer -->
+		<!-- <node pkg="grid_map_visualization" type="grid_map_visualization" name="grid_map_visualization" output="screen"/> -->
 
-        <!-- Launch the node to transfer plan message data to formats conducive to rviz -->
-        <node name="rviz_interface" pkg="global_body_planner" type="rviz_interface_node" output="screen"/>
+        <!-- 将规划消息转换为适合rviz的格式 Launch the node to transfer plan message data to formats conducive to rviz -->
+        <!-- <node name="rviz_interface" pkg="global_body_planner" type="rviz_interface_node" output="screen"/> -->
 
         <!-- Launch rviz -->
-        <node name="rviz" pkg="rviz" type="rviz" args="-d $(find global_body_planner)/rviz/example.rviz"/>
+        <!-- <node name="rviz" pkg="rviz" type="rviz" args="-d $(find global_body_planner)/rviz/example.rviz"/> -->
 
 </launch>

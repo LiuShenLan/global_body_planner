@@ -1,0 +1,13 @@
+<launch>
+    <!-- 只发布高程图 -->
+
+    <!-- 加载参数 -->
+    <rosparam command="load" file="$(find global_body_planner)/config/params.yaml"/>
+
+    <!-- 使用csv文件加载高程图或创建高程图，与下一行二选一  Launch the terrain map publisher -->
+    <node pkg="global_body_planner" type="terrain_map_publisher_node" name="terrain_map_publisher" output="screen"/>
+
+    <!-- Launch rviz -->
+    <node name="rviz" pkg="rviz" type="rviz" args="-d $(find global_body_planner)/rviz/terrain.rviz"/>
+
+</launch>
