@@ -70,14 +70,17 @@ public:
 	 * @param[out] success_var Number of solves under 5 seconds		5秒内解决的次数
 	 * @param[out] vertices_generated Number of vertices generated in the tree	树中生成的节点数
 	 * @param[out] time_to_first_solve The time elapsed until the first valid path was found	找到第一个有效路径之前经过的时间
+	 * @param[out] length_vector 每次运行规划算法找到的最短路径长度
+	 * @param[out] yaw_vector 每次运行规划算法找到的最小 yaw 旋转角度
 	 * @param[out] cost_vector Vector of costs each time a better one is found	每次运行规划算法找到的最优的路径质量
 	 * @param[out] cost_vector_times Vector of times at which each better cost is found	每次运行规划算法找到最优路径质量所消耗的时间
 	 * @param[out] path_duration The duration of the path in seconds	路径的持续时间(单位：秒)
 	 * @param[out] allStatePosition 树中探索到的所有的状态的三维空间位置
 	 */
 	void getStatistics(double &plan_time, int &success_var, int &vertices_generated, double &time_to_first_solve,
-					   std::vector<double> &cost_vector, std::vector<double> &cost_vector_times, double &path_duration,
-					   std::vector<std::vector<double>> &allStatePosition);
+					   std::vector<double> &length_vector, std::vector<double> &yaw_vector,
+					   std::vector<double> &cost_vector, std::vector<double> &cost_vector_times,
+					   double &path_duration, std::vector<std::vector<double>> &allStatePosition);
 
 	/**
 	 * @brief Generate a new state that can be connected to the tree and is as close as possible to the specified state
@@ -110,7 +113,7 @@ public:
 	std::vector <Action> getActionSequence(PlannerClass &T, std::vector<int> path);
 
 	/**
-	 * @brief 将树中所有的状态记录到 allStatePosition 中
+	 * @brief 将树中所有的状态记录到 allStatePosition 中，用于在rviz中显示
 	 * @param[in] T The PlannerClass instance containing the tree		包含树的 PlannerClass 实例
 	 */
 	void saveStateSequence(PlannerClass &T);
@@ -118,19 +121,27 @@ public:
 	/**
 	 * @brief 设置在动作采样时，根据相邻的两个状态速度变化方向，进行采样相关参数
 	 */
-	void set_action_direction_sampling_flag_(bool action_direction_sampling_flag);
-	void set_action_direction_sampling_probability_threshold_(double action_direction_sampling_probability_threshold);
+	void set_action_direction_sampling(bool flag, double threshold);
 
 	/**
 	 * @brief 设置在状态采样时，根据起点或终点的位置，进行采样相关参数
 	 */
-	void set_state_direction_sampling_flag_(bool state_direction_sampling_flag);
-	void set_state_direction_sampling_probability_threshold_(double state_direction_sampling_probability_threshold);
+	void set_state_direction_sampling(bool flag, double threshold, bool speed_direction_flag);
 
 	/**
 	 * @brief 设置自适应步长，当启用后，在对状态动作对进行有效性检测时，新状态如果是有效时，会增加检测时间分辨率步长
 	 */
 	void set_state_action_pair_check_adaptive_step_size_flag_(bool state_action_pair_check_adaptive_step_size_flag);
+
+	/**
+	 * @brief 路径质量中是否添加 yaw
+	 */
+	void set_cost_add_yaw(bool flag, double length_weight, double yaw_weight);
+
+	/**
+	 * @brief 打印优化输出参数
+	 */
+	void print_setting_parameters();
 
 protected:
 
@@ -152,19 +163,31 @@ protected:
 	/// Number of vertices in the tree	树中节点的数量
 	int num_vertices;
 
-	/// Path quality in meters	路径质量(单位：米)
-	double path_quality_;
+	/// 路径长度(单位：米)
+	double path_length_;
 
-	/// Vector of costs each time a better one is found	每次运行规划算法找到的最优的路径质量
+	/// 路径中 yaw 累计旋转角度
+	double path_yaw_;
+
+	/// 路径质量
+	double path_cost_;
+
+	/// 每次运行规划算法找到的最短路径长度
+	std::vector<double> length_vector_;
+
+	/// 每次运行规划算法找到的最小 yaw 旋转角度
+	std::vector<double> yaw_vector_;
+
+	/// Vector of costs each time a better one is found	每次运行规划算法找到的最优路径
 	std::vector<double> cost_vector_;
 
-	/// Vector of times at which each better cost is found	每次运行规划算法找到最优路径质量所消耗的时间
+	/// Vector of times at which each better cost is found	每次运行规划算法找到最优路径所消耗的时间
 	std::vector<double> cost_vector_times_;
 
 	/// The duration of the path in seconds	路径的持续时间(单位：秒)
 	double path_duration_;
 
-	/// 树中探索到的所有的状态的三维空间位置
+	/// 树中探索到的所有的状态的三维空间位置，用于在rviz中显示
 	std::vector<std::vector<double>> allStatePosition_;
 
 	/// 在动作采样时，根据相邻的两个状态速度变化方向，进行采样
@@ -174,9 +197,15 @@ protected:
 	/// 在状态采样时，根据起点或终点的位置，进行采样
 	bool state_direction_sampling_flag_ = false;
 	double state_direction_sampling_probability_threshold_ = 0.05;	// 概率阈值
+	bool state_direction_sampling_speed_direction_flag_ = false;	// 是否限制速度方向
 
 	/// 自适应步长，当启用后，在对状态动作对进行有效性检测时，新状态如果是有效时，会增加检测时间分辨率步长
 	bool state_action_pair_check_adaptive_step_size_flag_ = false;
+
+	/// 路径质量中是否添加 yaw
+	bool cost_add_yaw_flag_ = false;		// 是否启用
+	double cost_add_yaw_length_weight_ = 1;	// 路径长度权重
+	double cost_add_yaw_yaw_weight_ = 1;		// yaw 权重
 };
 
 #endif

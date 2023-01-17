@@ -117,7 +117,7 @@ protected:
 	double horizon_expansion_factor = 1.2;
 
 	/// Hard maximum time allowed for the planner, returns unsuccessfully if reached	规划为允许的最大时间，到达该时间阈值则返回失败	CHANGE: 20 -> 40
-	const int max_time_solve = 600;
+	const int max_time_solve = 4000;
 };
 
 #endif

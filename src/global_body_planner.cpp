@@ -50,6 +50,8 @@ void GlobalBodyPlanner::clearPlan() {
 	t_plan_.clear();
 	solve_time_info_.clear();
 	vertices_generated_info_.clear();
+	length_vectors_.clear();
+	yaw_vectors_.clear();
 	cost_vectors_.clear();
 	cost_vectors_times_.clear();
 }
@@ -61,18 +63,26 @@ void GlobalBodyPlanner::callPlanner() {
 	setStartAndGoalStates();	// 设置规划器的起止点
 	clearPlan();	// 清除规划变量
 
-	// Initialize statistics variables	初始化统计变量
+	// 单次规划统计变量
 	double plan_time;			// 在规划器中花费的总时间
 	int success;				// 5秒内解决的次数
 	int vertices_generated;		// 树中生成的节点数
 	double time_to_first_solve;	// 找到第一个有效路径之前经过的时间
 	double path_duration;		// 路径的持续时间(单位：秒)
-	double total_solve_time = 0;			// 在多次规划中消耗的总时间
-	double total_vertices_generated = 0;	// 在多次规划中树中生成的节点数
-	double total_path_length = 0;			// 在多次路径规划中，最优路径质量
-	double total_path_duration = 0;			// 在多次路径规划中路径的持续时间(单位：秒)
+	double max_curvature;		// 插值后机器人身体规划状态数组中的最大曲率
+
+	// 多次规划统计变量
+	double total_solve_time = 0;			// 消耗的总时间
+	double total_vertices_generated = 0;	// 生成的节点数
+	double total_path_length = 0;			// 最短路径长度
+	double total_path_yaw = 0;				// 最小路径 yaw 旋转
+	double total_path_cost = 0;				// 最优路径质量
+	double total_path_duration = 0;			// 路径的持续时间(单位：秒)
+	double total_max_curvature = 0;			// 插值后机器人身体规划状态数组中的最大曲率
 
 	// Set up more objects
+	length_vectors_.reserve(num_calls_);
+	yaw_vectors_.reserve(num_calls_);
 	cost_vectors_.reserve(num_calls_);
 	cost_vectors_times_.reserve(num_calls_);
 	RRTClass rrt_obj;		// 有用？
@@ -93,8 +103,11 @@ void GlobalBodyPlanner::callPlanner() {
 		// 清除以前的解决方案并初始化统计变量
 		state_sequence_.clear();	// 最终路径中的状态序列
 		action_sequence_.clear();	// 最终路径中的动作序列
-		std::vector<double> cost_vector;		// 每次运行规划算法找到的最优的路径质量
-		std::vector<double> cost_vector_times;	// 每次运行规划算法找到最优路径质量所消耗的时间
+		// 每次运行规划算法统计数据
+		std::vector<double> length_vector;		// 最短路径长度
+		std::vector<double> yaw_vector;			// 最小 yaw 旋转角度
+		std::vector<double> cost_vector;		// 最优路径质量
+		std::vector<double> cost_vector_times;	// 路径消耗的时间
 
 		// Call the appropriate planning method (either RRT-Connect or RRT*-Connect)	调用适当的规划方法
 		if (algorithm_.compare("rrt-connect") == 0) {
@@ -102,71 +115,94 @@ void GlobalBodyPlanner::callPlanner() {
 			rrt_connect_obj.buildRRTConnect(terrain_, robot_start_, robot_goal_, state_sequence_, action_sequence_,
 											replan_time_limit_);
 			// 获取规划器求解的统计信息
-			rrt_connect_obj.getStatistics(plan_time, success, vertices_generated, time_to_first_solve, cost_vector,
-										  cost_vector_times, path_duration, allStatePosition);
+			rrt_connect_obj.getStatistics(plan_time, success, vertices_generated, time_to_first_solve, length_vector,
+										  yaw_vector, cost_vector, cost_vector_times, path_duration, allStatePosition);
 		} else if (algorithm_.compare("rrt-star-connect") == 0) {
 			rrt_star_connect_obj.buildRRTStarConnect(terrain_, robot_start_, robot_goal_, state_sequence_,
 													 action_sequence_, replan_time_limit_);
-			rrt_star_connect_obj.getStatistics(plan_time, success, vertices_generated, time_to_first_solve, cost_vector,
-											   cost_vector_times, path_duration, allStatePosition);
+			rrt_star_connect_obj.getStatistics(plan_time, success, vertices_generated, time_to_first_solve, length_vector,
+										  yaw_vector, cost_vector, cost_vector_times, path_duration, allStatePosition);
 		} else
 			throw std::runtime_error("Invalid algorithm specified");
 
+		// Interpolate to get full body plan	插值得到全部身体规划
+		double dt = 0.05;	// 插值分辨率
+		std::vector<int> interp_phase;	// 插值后机器人身体规划支撑相或飞行相数组
+		getInterpPath(state_sequence_, action_sequence_, dt, body_plan_, t_plan_, interp_phase);	// 根据动作序列为状态序列插值
+
 		// Handle the statistical data	处理统计数据
+		length_vectors_.push_back(length_vector);
+		yaw_vectors_.push_back(yaw_vector);
 		cost_vectors_.push_back(cost_vector);
 		cost_vectors_times_.push_back(cost_vector_times);
+		max_curvature = calculateMaxCurvature(body_plan_);
 
 		total_solve_time += plan_time;
 		total_vertices_generated += vertices_generated;
-		total_path_length += cost_vector.back();
+		total_path_length += length_vector.back();
+		total_path_yaw += yaw_vector.back();
+		total_path_cost += cost_vector.back();
 		total_path_duration += path_duration;
+		total_max_curvature += max_curvature;
 
-		std::cout << "Vertices generated: " << vertices_generated << std::endl;		// 树中生成的节点数
-		std::cout << "Solve time: " << plan_time << std::endl;				// 在规划器中花费的总时间
+		std::cout << "Vertices generated: " << vertices_generated << std::endl;	// 树中生成的节点数
+		std::cout << "Solve time: " << plan_time << std::endl;					// 在规划器中花费的总时间
 		std::cout << "Time to first solve: " << time_to_first_solve << std::endl;	// 找到第一个有效路径之前经过的时间
-		std::cout << "Path length: " << cost_vector.back() << std::endl;	// 最优的路径质量
+		std::cout << "Path length: " << length_vector.back() << std::endl;		// 最短路径长度
+		std::cout << "Path yaw: " << yaw_vector.back() << std::endl;			// 最小路径 yaw 旋转
+		std::cout << "Path cost: " << cost_vector.back() << std::endl;			// 最优路径质量
+		std::cout << "Path duration: " << path_duration << std::endl;			// 路径持续时间
+		std::cout << "Path max curvature: " << max_curvature << std::endl;		// 路径最大曲率
 
 		solve_time_info_.push_back(plan_time);	// 多次调用规划器分别花费的时间数组
 		vertices_generated_info_.push_back(vertices_generated);	// 多次调用规划器分别树中生成的节点数
 	}
 
-	// Report averaged statistics if num_calls_ > 1	如果多次调用规划器，则报告平均统计数据
-	if (num_calls_ > 1) {
-		std::cout << "---------- Average ----------" << std::endl;
-		std::cout << "Average vertices generated: " << total_vertices_generated / num_calls_ << std::endl;
-		std::cout << "Average solve time: " << total_solve_time / num_calls_ << std::endl;
-		std::cout << "Average path length: " << total_path_length / num_calls_ << std::endl;
-		std::cout << "Average path duration: " << total_path_duration / num_calls_ << std::endl;
-	}
+	// 打印优化参数设置
+	rrt_connect_obj.print_setting_parameters();
 
-	// Interpolate to get full body plan	插值得到全部身体规划
-	double dt = 0.05;	// 插值分辨率
-	std::vector<int> interp_phase;	// 插值后机器人身体规划支撑相或飞行相数组
-	getInterpPath(state_sequence_, action_sequence_, dt, body_plan_, t_plan_, interp_phase);	// 根据动作序列为状态序列插值
+	if (num_calls_ > 1) {	// 如果多次调用规划器，则报告平均统计数据
+		std::cout << "---------- Average ----------" << std::endl;
+		std::cout << "Average vertices generated: " << total_vertices_generated / num_calls_ << std::endl;	// 树中生成的节点数
+		std::cout << "Average solve time: " << total_solve_time / num_calls_ << std::endl;				// 在规划器中花费的总时间
+		std::cout << "Average path length: " << total_path_length / num_calls_ << std::endl;			// 最短路径长度
+		std::cout << "Average path yaw: " << total_path_yaw / num_calls_ << std::endl;					// 最小路径 yaw 旋转
+		std::cout << "Average path cost: " << total_path_cost / num_calls_ << std::endl;				// 最优路径质量
+		std::cout << "Average path duration: " << total_path_duration / num_calls_ << std::endl;		// 路径持续时间
+		std::cout << "Average path max curvature: " << total_max_curvature / num_calls_ << std::endl;	// 路径最大曲率
+	} else	// 只调用一次规划器，打印所有状态
+		printStateSequenceXYZPYaw(state_sequence_);
 }
 
 // 设置规划器的参数
 void GlobalBodyPlanner::setPlannerParameter(RRTClass& rrt_obj) {
+	// 是否使用自适应步长
+	bool state_action_pair_check_adaptive_step_size_flag;
+	nh_.param<bool>("global_body_planner/state_action_pair_check_adaptive_step_size_flag", state_action_pair_check_adaptive_step_size_flag, false);
+	rrt_obj.set_state_action_pair_check_adaptive_step_size_flag_(state_action_pair_check_adaptive_step_size_flag);
+
+	// 路径质量中是否添加 yaw
+	bool cost_add_yaw_flag;
+	double cost_add_yaw_length_weight, cost_add_yaw_yaw_weight;
+	nh_.param<bool>("global_body_planner/cost_add_yaw/flag", cost_add_yaw_flag, false);
+	nh_.param<double>("global_body_planner/cost_add_yaw/length_weight", cost_add_yaw_length_weight, 1.0);
+	nh_.param<double>("global_body_planner/cost_add_yaw/yaw_weight", cost_add_yaw_yaw_weight, 1.0);
+	rrt_obj.set_cost_add_yaw(cost_add_yaw_flag, cost_add_yaw_length_weight, cost_add_yaw_yaw_weight);
+
 	// 在动作采样时，是否根据相邻的两个状态速度变化方向，进行采样
 	bool action_direction_sampling_flag;
 	double action_direction_sampling_probability_threshold;	// 概率阈值
 	nh_.param<bool>("global_body_planner/action_direction_sampling/flag", action_direction_sampling_flag, false);
 	nh_.param<double>("global_body_planner/action_direction_sampling/probability_threshold", action_direction_sampling_probability_threshold, 0.15);
-	rrt_obj.set_action_direction_sampling_flag_(action_direction_sampling_flag);
-	rrt_obj.set_action_direction_sampling_probability_threshold_(action_direction_sampling_probability_threshold);
+	rrt_obj.set_action_direction_sampling(action_direction_sampling_flag, action_direction_sampling_probability_threshold);
 
 	// 在状态采样时，根据起点或终点的位置，进行采样
-	bool state_direction_sampling_flag;
+	bool state_direction_sampling_flag, state_direction_sampling_speed_direction_flag;
 	double state_direction_sampling_probability_threshold;	// 概率阈值
 	nh_.param<bool>("global_body_planner/state_direction_sampling/flag", state_direction_sampling_flag, false);
 	nh_.param<double>("global_body_planner/state_direction_sampling/probability_threshold", state_direction_sampling_probability_threshold, 0.15);
-	rrt_obj.set_state_direction_sampling_flag_(state_direction_sampling_flag);
-	rrt_obj.set_state_direction_sampling_probability_threshold_(state_direction_sampling_probability_threshold);
-
-	// 是否使用自适应步长
-	bool state_action_pair_check_adaptive_step_size_flag;
-	nh_.param<bool>("global_body_planner/state_action_pair_check_adaptive_step_size_flag", state_action_pair_check_adaptive_step_size_flag, false);
-	rrt_obj.set_state_action_pair_check_adaptive_step_size_flag_(state_action_pair_check_adaptive_step_size_flag);
+	nh_.param<bool>("global_body_planner/state_direction_sampling/speed_direction_flag", state_direction_sampling_speed_direction_flag, false);
+	rrt_obj.set_state_direction_sampling(state_direction_sampling_flag, state_direction_sampling_probability_threshold, state_direction_sampling_speed_direction_flag);
 }
 
 // 设置规划器的起止点

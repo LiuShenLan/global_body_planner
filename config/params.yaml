@@ -6,18 +6,25 @@ topics:
 
 global_body_planner:
   update_rate: 1
-  num_calls: 100            # Number of times to call the planner 调用规划器的次数
+  num_calls: 1000            # Number of times to call the planner 调用规划器的次数
   replan_time_limit: 1.0  # Minimum amount of time to run the planner (will replan to find better solutions until this duration is up)  运行规划器的最短时间，当找到目标后，如果花费的时间超过该阈值，则不进行重新规划
   algorithm: rrt-connect  # rrt-connect or rrt-star-connect
   save_data: false        # 是否保存自定义数据结构FastTerrainMap的值到本地，保存后会终止程序，防止多次重复保存
-  publish_all_state: false  # 是否发布在规划过程中遍历到的所有的状态
-  action_direction_sampling:  # 在动作采样的时候，根据相邻的两个状态速度变化方向，进行采样
-    flag: false # 是否启用
-    probability_threshold: 0.1 # 概率阈值
+  # 是否发布在规划过程中遍历到的所有的状态，注意需要取消 src/rrt_connect.cpp 文件 RRTConnectClass::buildRRTConnect 函数中 saveStateSequence 的注释
+  publish_all_state: false
+  # 优化参数
+  state_action_pair_check_adaptive_step_size_flag: false  # 自适应步长，当启用后，在对状态动作对进行有效性检测时，新状态如果是有效时，会增加检测时间分辨率步长
+  cost_add_yaw: # 在路径质量评估中是否添加 yaw
+    flag: false        # 是否启用
+    length_weight: 1  # 路径长度权重
+    yaw_weight: 1     # yaw 权重
   state_direction_sampling:   # 在状态采样时，根据起点或终点的位置，进行采样
     flag: false # 是否启用
     probability_threshold: 0.05  # 概率阈值
-  state_action_pair_check_adaptive_step_size_flag: true  # 自适应步长，当启用后，在对状态动作对进行有效性检测时，新状态如果是有效时，会增加检测时间分辨率步长
+    speed_direction_flag: false   # 是否限制速度的方向
+  action_direction_sampling:  # 在动作采样的时候，根据相邻的两个状态速度变化方向，进行采样
+    flag: false # 是否启用
+    probability_threshold: 0.1 # 概率阈值
 
 # 高程图发布者
 terrain_map_publisher:

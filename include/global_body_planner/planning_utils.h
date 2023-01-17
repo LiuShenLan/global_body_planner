@@ -76,26 +76,39 @@ namespace planning_utils {
 	void printStateSequence(std::vector <State> state_sequence);
 	void printInterpStateSequence(std::vector <State> state_sequence, std::vector<double> interp_t);
 	void printActionSequence(std::vector <Action> action_sequence);
+	void printStateSequenceXYZPYaw(const std::vector<State> &state_sequence);	// 打印状态序列，xyzp yaw
+	void printStateXYZPYaw(const State &s);	// 打印状态，xyzp yaw
 
-	// Define some utility functions
+	// 插值
 	void interpStateActionPair(State s, Action a, double t0, double dt, std::vector <State> &interp_path, std::vector<double> &interp_t, std::vector<int> &interp_phase);	// 为状态-动作对插值
 	void getInterpPath(std::vector <State> state_sequence, std::vector <Action> action_sequence, double dt, std::vector <State> &interp_path, std::vector<double> &interp_t, std::vector<int> &interp_phase);	// 根据动作序列为状态序列插值
 	State interp(State q1, State q2, double x);
-	double poseDistance(State q1, State q2);	// 计算两个状态对应位姿(x, y, z, q)之间的欧氏距离
-	double stateDistance(State q1, State q2);	// 计算两个状态之间的多维欧氏距离
-	bool isWithinBounds(State s1, State s2);	// 判断两个指定状态之间的多维欧式距离是否小于GOAL_BOUNDS(用于判断是否到达目标点)
-	std::array<double, 3> rotate_grf(std::array<double, 3> surface_norm, std::array<double, 3> grf);	// 根据高程图表面法线，旋转地面反作用力，如果使用默认高程图表面法线，则不旋转
 
-	// Define planning helper functions
+	// 计算状态间距离
+	double poseDistance(const State & q1, const State & q2);		// 计算两个状态之间的三维欧氏距离
+	double stateDistance(const State & q1, const State & q2);		// 计算两个状态之间的多维欧氏距离
+	inline double stateYawDistance(const State & q1, const State & q2);	// 计算两个状态之间的 yaw 距离
+	inline double stateDistance(const State & q1, const State & q2, bool cost_add_yaw_flag,double cost_add_yaw_length_weight, double cost_add_yaw_yaw_weight);	// 判断是否需要计算 yaw，如果需要计算加权值，否则计算路径长度
+
+	// 判断两个指定状态之间的多维欧式距离是否小于GOAL_BOUNDS(用于判断是否到达目标点)
+	bool isWithinBounds(State s1, State s2);
+	// 根据高程图表面法线，旋转地面反作用力，如果使用默认高程图表面法线，则不旋转
+	std::array<double, 3> rotate_grf(std::array<double, 3> surface_norm, std::array<double, 3> grf);
+
+	// 对状态施加动作
 	State applyStance(State s, Action a, double t);	// 在支撑相时，利用当前的状态和动作，根据论文中公式(6,7)计算下一个状态
 	State applyStance(State s, Action a);	// 在支撑相时，利用当前的状态和动作，根据论文中公式(6,7)计算下一个状态，时间为支撑相时间
 	State applyFlight(State s, double t_f);	// 在飞行相时，根据当前状态和飞行相时间，计算得到下一个状态，在飞行相中为匀速运动(垂直方向重力影响除外)
 	State applyAction(State s, Action a);
 	State applyStanceReverse(State s, Action a, double t);
 	State applyStanceReverse(State s, Action a);
-	Action getRandomAction(std::array<double, 3> surf_norm, int direction, bool action_direction_sampling_flag_, double action_direction_sampling_probability_threshold_, State s, State s_near);	// 获取随机动作，根据flag确定是否需要有指向性采样
+
+	// 动作随机采样
+	Action getRandomAction(std::array<double, 3> surf_norm, int direction, bool action_direction_sampling_flag, double action_direction_sampling_probability_threshold, State s, State s_near);	// 获取随机动作，根据flag确定是否需要有指向性采样
 	Action getRandomAction(std::array<double, 3> surf_norm);	// 获取随机动作
 	Action getRandomActionDirection(std::array<double, 3> surf_norm, State s_from, State s_to);	// 获取有指向性的随机动作
+
+	// 检查动作、状态是否有效
 	bool isValidAction(Action a);	// 检查一个动作是否是有效的(地面反作用力与摩擦锥)
 	bool isValidState(State s, FastTerrainMap &terrain, int phase);
 
@@ -110,6 +123,36 @@ namespace planning_utils {
 	bool isValidStateActionPairReverseAdaptiveStepSize(State s, Action a, FastTerrainMap &terrain, State &s_new, double &t_new);	// 给定结束状态与动作对，检查该状态动作对在给定支撑相与飞行相时间的运动中，所到达的状态是否均为有效状态，同时记录最远有效状态到s_new中，添加自适应步长
 	bool isValidStateActionPairReverse(State s, Action a, FastTerrainMap &terrain, State &s_new, double &t_new);	// 给定结束状态与动作对，检查该状态动作对在给定支撑相与飞行相时间的运动中，所到达的状态是否均为有效状态，同时记录最远有效状态到s_new中
 	bool isValidStateActionPairReverse(State s, Action a, FastTerrainMap &terrain);	// 给定结束状态与动作对，检查该状态动作对在给定支撑相与飞行相时间的运动中，所到达的状态是否均为有效状态，同时记录最远有效状态到s_new中
+
+	// 三点法计算曲率
+	double calculateCurvature(double x1, double y1, double x2, double y2, double x3, double y3);
+	// 计算插值后机器人身体规划状态数组中的最大曲率
+	double calculateMaxCurvature(std::vector<State> &body_plan);
+
+	// inline 函数定义
+	inline double stateYawDistance(const State &q1, const State &q2) {
+		// yaw 距离
+		double yaw1 = std::atan2(q1[4], q1[3]);
+		double yaw2 = std::atan2(q2[4], q2[3]);
+
+		double yaw_min = std::min(yaw1, yaw2);
+		double yaw_max = std::max(yaw1, yaw2);
+
+		double res = std::min(yaw_max - yaw_min, yaw_min + 2 * MY_PI - yaw_max);
+		// std::cout << "yaw1: " << yaw1 << "   yaw2: " << yaw2 << "   res: " << res << std::endl;
+
+		return res;
+	}
+	inline double stateDistance(const State &q1, const State &q2, bool cost_add_yaw_flag,
+						 double cost_add_yaw_length_weight, double cost_add_yaw_yaw_weight) {
+		// 判断是否需要计算 yaw，如果需要计算加权值，否则计算多维欧式距离
+		if (cost_add_yaw_flag)
+			return poseDistance(q1, q2) * cost_add_yaw_length_weight +
+				   stateYawDistance(q1, q2) * cost_add_yaw_yaw_weight;
+			// return poseDistance(q1, q2) * cost_add_yaw_length_weight;
+		else
+			return stateDistance(q1, q2);
+	}
 }
 
 #endif

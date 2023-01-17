@@ -26,22 +26,25 @@ int RRTStarConnectClass::extend(PlannerClass &T, State s, FastTerrainMap &terrai
 
 		// Initialize g_s_new
 		double g_s_new = T.getGValue(s_nearest_index) + poseDistance(s_new, s_nearest);
+		double y_s_new = T.getYValue(s_nearest_index) + stateYawDistance(s_new, s_nearest);
 		for (int i = 0; i < neighbors.size(); i++) {
 			int s_near_idx = neighbors[i];
 			State s_near = T.getVertex(s_near_idx);
 
 			if (attemptConnect(s_near, s_new, dummy, a_connect, terrain, direction) == REACHED) {
 				double g_s_near = T.getGValue(s_near_idx) + poseDistance(s_near, s_new);
+				double y_s_near = T.getYValue(s_near_idx) + stateYawDistance(s_near, s_new);
 				if (g_s_near < g_s_new) {
 					a_new = a_connect;
 					s_min_idx = s_near_idx;
 					g_s_new = g_s_near;
+					y_s_new = y_s_near;
 				}
 			}
 		}
 
 		T.addEdge(s_min_idx, s_new_idx);
-		T.updateGValue(s_new_idx, g_s_new);
+		T.updateGYValue(s_new_idx, g_s_new, y_s_new);
 		T.addAction(s_new_idx, a_new);
 
 		for (int s_near_idx: neighbors) {
@@ -49,10 +52,12 @@ int RRTStarConnectClass::extend(PlannerClass &T, State s, FastTerrainMap &terrai
 				State s_near = T.getVertex(s_near_idx);
 				if ((attemptConnect(s_new, s_near, dummy, a_connect, terrain, direction) == REACHED) &&
 					(T.getGValue(s_near_idx) > (T.getGValue(s_new_idx) + poseDistance(s_near, s_new)))) {
+
 					int s_parent = T.getPredecessor(s_near_idx);
 					T.removeEdge(s_parent, s_near_idx);
 					T.addEdge(s_new_idx, s_near_idx);
-					T.updateGValue(s_near_idx, (T.getGValue(s_new_idx) + poseDistance(s_near, s_new)));
+					T.updateGYValue(s_near_idx, (T.getGValue(s_new_idx) + poseDistance(s_near, s_new)),
+									(T.getYValue(s_new_idx) + stateYawDistance(s_near, s_new)));
 					T.addAction(s_near_idx, a_connect);
 				}
 			}
@@ -101,20 +106,25 @@ void RRTStarConnectClass::buildRRTStarConnect(FastTerrainMap &terrain, State s_s
 
 	std::cout << "RRT Star Connect" << std::endl;
 
-	cost_vector_.clear();
-	cost_vector_times_.clear();
+	// 每次运行规划算法时的数据
+	length_vector_.clear();    // 最短路径长度
+	yaw_vector_.clear();    // 最小路径 yaw 旋转
+	cost_vector_.clear();    // 最优路径质量
+	cost_vector_times_.clear(); // 消耗时间
 
 	PlannerClass Ta;
-	Ta.init(s_start);
+	Ta.init(s_start, cost_add_yaw_flag_, cost_add_yaw_length_weight_, cost_add_yaw_yaw_weight_);
 
 	PlannerClass Tb;
-	Tb.init(s_goal);
+	Tb.init(s_goal, cost_add_yaw_flag_, cost_add_yaw_length_weight_, cost_add_yaw_yaw_weight_);
 
 	int shared_a_idx, shared_b_idx;
 	std::vector<int> shared_a, shared_b;
 
 	goal_found = false;
-	double cost_so_far = INFTY;
+	double length_so_far = INFTY;    // 最短路径长度
+	double yaw_so_far = INFTY;        // 最小路径 yaw 旋转
+	double cost_so_far = INFTY;        // 最优路径质量
 	while (true) {
 		// Generate random s
 		State s_rand = Ta.randomState(terrain);
@@ -165,6 +175,8 @@ void RRTStarConnectClass::buildRRTStarConnect(FastTerrainMap &terrain, State s_s
 		for (int i = 0; i < shared_a.size(); ++i) {
 			int a_idx = shared_a[i];
 			int b_idx = shared_b[i];
+			double length = Ta.getGValue(a_idx) + Tb.getGValue(b_idx);
+			double yaw = Ta.getYValue(a_idx) + Tb.getYValue(b_idx);
 			double cost = Ta.getGValue(a_idx) + Tb.getGValue(b_idx);
 			if (cost < cost_so_far) {
 				cost_so_far = cost;
@@ -174,6 +186,8 @@ void RRTStarConnectClass::buildRRTStarConnect(FastTerrainMap &terrain, State s_s
 				auto t_current = std::chrono::high_resolution_clock::now();
 				std::chrono::duration<double> current_elapsed = t_current - t_start;
 
+				length_vector_.push_back(length_so_far);
+				yaw_vector_.push_back(yaw_so_far);
 				cost_vector_.push_back(cost_so_far);
 				cost_vector_times_.push_back(current_elapsed.count());
 			}
@@ -191,6 +205,8 @@ void RRTStarConnectClass::buildRRTStarConnect(FastTerrainMap &terrain, State s_s
 	auto t_end = std::chrono::high_resolution_clock::now();
 	elapsed_total = t_end - t_start;
 
+	length_vector_.push_back(length_so_far);
+	yaw_vector_.push_back(yaw_so_far);
 	cost_vector_.push_back(cost_so_far);
 	cost_vector_times_.push_back(elapsed_total.count());
 
@@ -205,5 +221,6 @@ void RRTStarConnectClass::buildRRTStarConnect(FastTerrainMap &terrain, State s_s
 		path_duration_ += a[6] + a[7];
 	}
 
-	std::cout << "Path quality = " << path_quality_ << std::endl;
+	std::cout << "Path length = " << path_length_ << std::endl;
+	std::cout << "Path yaw = " << path_yaw_ << std::endl;
 }

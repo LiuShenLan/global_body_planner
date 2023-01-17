@@ -46,7 +46,6 @@ public:
 	 */
 	void spin();
 
-
 private:
 	/**
 	 * @brief Callback function to handle new terrain map data  订阅到新的地图信息时更新地图数据
@@ -150,6 +149,12 @@ private:
 
 	/// Sequence of discrete actions in the plan  规划中的离散动作序列
 	std::vector <Action> action_sequence_;
+
+	/// 每次规划调用中的最短路径长度数组
+	std::vector <std::vector<double>> length_vectors_;
+
+	/// 每次规划调用中的 yaw 旋转最小数组
+	std::vector <std::vector<double>> yaw_vectors_;
 
 	/// Vector of cost instances in each planning call (nested STL vectors) 每次规划调用中的最优的路径质量数组
 	std::vector <std::vector<double>> cost_vectors_;

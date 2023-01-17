@@ -32,11 +32,14 @@ public:
 	 * @param[in] terrain 高程图
 	 * @param[in] state_direction_sampling_flag 是否启用指向性采样
 	 * @param[in] state_direction_sampling_probability_threshold 启用后的概率阈值
+	 * @param[in] speed_direction_flag 是否限制速度的方向
 	 * @param[in] s_from 起点状态
 	 * @param[in] s_to 终点状态
 	 * @return Newly generated random state
 	 */
-	State randomState(FastTerrainMap &terrain, bool state_direction_sampling_flag_, double state_direction_sampling_probability_threshold_, State s_from, State s_to);
+	State randomState(FastTerrainMap &terrain, bool state_direction_sampling_flag,
+					  double state_direction_sampling_probability_threshold, bool speed_direction_flag,
+					  State s_from, State s_to);
 
 	/**
 	 * @brief Generate a random state by sampling from within the bounds of the terrain	通过在高程图范围内采样生成一个随机状态
@@ -52,7 +55,7 @@ public:
 	 * @param[in] s_to 终点状态
 	 * @return Newly generated random state
 	 */
-	State randomStateDirection(FastTerrainMap &terrain, State s_from, State s_to);
+	State randomStateDirection(FastTerrainMap &terrain, State s_from, State s_to, bool speed_direction_flag);
 
 	/**
 	 * @brief Get the closest N vertices to the specified state by Euclidean distance.	通过多维欧氏距离获取距离指定状态最近的N个节点
@@ -63,7 +66,7 @@ public:
 	std::vector<int> neighborhoodN(State s, int N);
 
 	/**
-	 * @brief Get the vertices within the specified Euclidean distance of the specified state
+	 * @brief Get the vertices within the specified Euclidean distance of the specified state	用于 rrt-star-connect
 	 * @param[in] s State to query the neighborhood
 	 * @param[in] dist distance threshold for the neighborhood
 	 * @return Vector of indices included in the neighborhood

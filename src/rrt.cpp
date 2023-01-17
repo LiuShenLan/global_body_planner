@@ -18,7 +18,10 @@ using namespace planning_utils;
 // direction: 动态方向（FORWARD 或 REVERSE）
 // 返回值：是否找到比树中所有状态都更接近指定状态的状态
 bool RRTClass::newConfig(State s, State s_near, State &s_new, Action &a_new, FastTerrainMap &terrain, int direction) {
-	double best_so_far = stateDistance(s_near, s);	// 计算要走向的状态与树中最接近要走向状态的状态之间的多维欧氏距离
+	// 要走向的状态 s 与树中最接近要走向状态的状态 s_near 之间的成本
+	// TODO: 添加候选节点集中选取节点时是否要考虑 yaw
+	// double best_so_far = stateDistance(s_near, s, cost_add_yaw_flag_, cost_add_yaw_length_weight_, cost_add_yaw_yaw_weight_);
+	double best_so_far = stateDistance(s_near, s);
 	std::array<double, 3> surf_norm = terrain.getSurfaceNormal(s[0], s[1]);	// 高程图表面法线
 
 	// std::array<double,3>
@@ -47,6 +50,8 @@ bool RRTClass::newConfig(State s, State s_near, State &s_new, Action &a_new, Fas
 		}
 
 		if (valid_state_found == true) {	// 发现有效状态
+			// TODO: 添加候选节点集中选取节点时是否要考虑 yaw
+			// double current_dist = stateDistance(s_test, s, cost_add_yaw_flag_, cost_add_yaw_length_weight_, cost_add_yaw_yaw_weight_);	// 从初始位置根据随机采样得到的动作得到的有效状态与要走向的指定状态之间的多维欧氏距离
 			double current_dist = stateDistance(s_test, s);	// 从初始位置根据随机采样得到的动作得到的有效状态与要走向的指定状态之间的多维欧氏距离
 			if (current_dist < best_so_far) {
 				best_so_far = current_dist;
@@ -54,12 +59,14 @@ bool RRTClass::newConfig(State s, State s_near, State &s_new, Action &a_new, Fas
 				a_new = a_test;
 			}
 		}
-	}
 
+	// TODO: 添加候选节点集中选取节点时是否要考虑 yaw
+	// if (best_so_far == stateDistance(s_near, s, cost_add_yaw_flag_, cost_add_yaw_length_weight_, cost_add_yaw_yaw_weight_))	// 最接近要走向的状态的状态就是树中状态
 	if (best_so_far == stateDistance(s_near, s))	// 最接近要走向的状态的状态就是树中状态
 		return false;
 	else
 		return true;
+	}
 }
 
 // 将树扩展到给定状态
@@ -81,7 +88,8 @@ int RRTClass::extend(PlannerClass &T, State s, FastTerrainMap &terrain, int dire
 		T.addVertex(s_new_index, s_new);		// 向图中添加新状态
 		T.addEdge(s_near_index, s_new_index);	// 连接树中距离给定状态s最近的状态与新状态
 		T.addAction(s_new_index, a_new);		// 连接两个状态
-		T.updateGValue(s_new_index, T.getGValue(s_near_index) + poseDistance(s_near, s_new));	// 更新新状态到根节点的三维欧氏距离(g值)，并更新他所有子节点的g值
+		T.updateGYValue(s_new_index, T.getGValue(s_near_index) + poseDistance(s_near, s_new),
+						T.getYValue(s_near_index) + stateYawDistance(s_near, s_new));
 
 		// if (s_new == s)
 		// 新状态与给定状态之间的多维欧式距离是否小于GOAL_BOUNDS(用于判断是否到达目标点)
@@ -143,18 +151,21 @@ void RRTClass::printPath(PlannerClass &T, std::vector<int> path) {
 	std::cout << "\b\b  " << std::endl;
 }
 
-void RRTClass::getStatistics(double &plan_time, int &success, int &vertices_generated, double &time_to_first_solve,
+void RRTClass::getStatistics(double &plan_time, int &success_var, int &vertices_generated, double &time_to_first_solve,
+							 std::vector<double> &length_vector, std::vector<double> &yaw_vector,
 							 std::vector<double> &cost_vector, std::vector<double> &cost_vector_times,
 							 double &path_duration, std::vector<std::vector<double>> &allStatePosition) {
 	plan_time = elapsed_total.count();
-	success = success_;
+	success_var = success_;
 	vertices_generated = num_vertices;
 	time_to_first_solve = elapsed_to_first.count();
+	length_vector = length_vector_;
+	yaw_vector = yaw_vector_;
 	cost_vector = cost_vector_;
 	cost_vector_times = cost_vector_times_;
 	path_duration = path_duration_;
 	allStatePosition = allStatePosition_;
-	std::cout << "path_duration: " << path_duration << std::endl;
+	// std::cout << "path_duration: " << path_duration << std::endl;
 }
 
 void RRTClass::buildRRT(FastTerrainMap &terrain, State s_start, State s_goal, std::vector<State> &state_sequence,
@@ -162,13 +173,15 @@ void RRTClass::buildRRT(FastTerrainMap &terrain, State s_start, State s_goal, st
 	auto t_start = std::chrono::high_resolution_clock::now();
 	success_ = 0;
 
+	length_vector_.clear();
+	yaw_vector_.clear();
 	cost_vector_.clear();
 	cost_vector_times_.clear();
 
 	std::cout << "RRT" << std::endl;
 
 	PlannerClass T;
-	T.init(s_start);
+	T.init(s_start, cost_add_yaw_flag_, cost_add_yaw_length_weight_, cost_add_yaw_yaw_weight_);
 
 	int s_goal_idx;
 	goal_found = false;
@@ -224,13 +237,18 @@ void RRTClass::buildRRT(FastTerrainMap &terrain, State s_start, State s_goal, st
 		path_duration_ += a[6] + a[7];
 	}
 
-	path_quality_ = T.getGValue(s_goal_idx);
-	cost_vector_.push_back(path_quality_);
+	path_length_ = T.getGValue(s_goal_idx);
+	path_yaw_ = T.getYValue(s_goal_idx);
+	path_cost_ = T.getGValue(s_goal_idx);
+
+	length_vector_.push_back(path_length_);
+	yaw_vector_.push_back(path_yaw_);
+	cost_vector_.push_back(path_cost_);
 	cost_vector_times_.push_back(elapsed_total.count());
-	std::cout << "Path quality = " << path_quality_ << std::endl;
+	std::cout << "Path length = " << path_cost_ << std::endl;
 }
 
-// 将树中所有的状态记录到 allStatePosition_ 中
+// 将树中所有的状态记录到 allStatePosition_ 中，用于在rviz中显示
 // T: 包含树的 PlannerClass 实例
 void RRTClass::saveStateSequence(PlannerClass &T) {
 	int length = T.getNumVertices();	// 当前树中节点数
@@ -247,22 +265,43 @@ void RRTClass::saveStateSequence(PlannerClass &T) {
 }
 
 // 设置在动作采样的时候，根据相邻的两个状态速度变化方向，进行采样相关参数
-void RRTClass::set_action_direction_sampling_flag_(bool action_direction_sampling_flag) {
-	action_direction_sampling_flag_ = action_direction_sampling_flag;
-}
-void RRTClass::set_action_direction_sampling_probability_threshold_(double action_direction_sampling_probability_threshold) {
-	action_direction_sampling_probability_threshold_ = action_direction_sampling_probability_threshold;
+void RRTClass::set_action_direction_sampling(bool flag, double threshold) {
+	action_direction_sampling_flag_ = flag;
+	action_direction_sampling_probability_threshold_ = threshold;
 }
 
 // 设置在状态采样时，根据起点或终点的位置，进行采样相关参数
-void RRTClass::set_state_direction_sampling_flag_(bool state_direction_sampling_flag) {
-	state_direction_sampling_flag_ = state_direction_sampling_flag;
-}
-void RRTClass::set_state_direction_sampling_probability_threshold_(double state_direction_sampling_probability_threshold) {
-	state_direction_sampling_probability_threshold_ = state_direction_sampling_probability_threshold;
+void RRTClass::set_state_direction_sampling(bool flag, double threshold, bool speed_direction_flag) {
+	state_direction_sampling_flag_ = flag;
+	state_direction_sampling_probability_threshold_ = threshold;
+	state_direction_sampling_speed_direction_flag_ = speed_direction_flag;
 }
 
 // 设置自适应步长，当启用后，在对状态动作对进行有效性检测时，新状态如果是有效时，会增加检测时间分辨率步长
 void RRTClass::set_state_action_pair_check_adaptive_step_size_flag_(bool state_action_pair_check_adaptive_step_size_flag) {
 	state_action_pair_check_adaptive_step_size_flag_ = state_action_pair_check_adaptive_step_size_flag;
+}
+
+// 路径质量中是否添加 yaw
+void RRTClass::set_cost_add_yaw(bool flag, double length_weight, double yaw_weight) {
+	cost_add_yaw_flag_ = flag;
+	cost_add_yaw_length_weight_ = length_weight;
+	cost_add_yaw_yaw_weight_ = yaw_weight;
+}
+
+// 打印优化输出参数
+void RRTClass::print_setting_parameters() {
+	std::cout << "---------- rrt setting parameters ----------" << 1 << std::endl;
+	std::cout << "adaptive step size flag: " << state_action_pair_check_adaptive_step_size_flag_ << std::endl;
+	std::cout << "cost_add_yaw: " << std::endl;
+	std::cout << "    flag: " << cost_add_yaw_flag_ << std::endl;
+	std::cout << "    length weight: " << cost_add_yaw_length_weight_ << std::endl;
+	std::cout << "    yaw weight: " << cost_add_yaw_yaw_weight_ << std::endl;
+	std::cout << "state direction sampling: " << std::endl;
+	std::cout << "    flag: " << state_direction_sampling_flag_ << std::endl;
+	std::cout << "    probability threshold: " << state_direction_sampling_probability_threshold_ << std::endl;
+	std::cout << "    speed direction flag: " << state_direction_sampling_speed_direction_flag_ << std::endl;
+	std::cout << "action direction sampling: " << std::endl;
+	std::cout << "    flag: " << action_direction_sampling_flag_ << std::endl;
+	std::cout << "    probability threshold: " << action_direction_sampling_probability_threshold_ << std::endl;
 }

@@ -30,11 +30,14 @@ void GraphClass::addVertex(int idx, State q) {
 	return;
 }
 
-// 向图中添加连接idx1与idx2的边
+// 向图中添加连接父节点idx1与子节点idx2的边
+// idx1: 父节点
+// idx2: 子节点
 void GraphClass::addEdge(int idx1, int idx2) {
 	edges[idx2].push_back(idx1);
 	successors[idx1].push_back(idx2);
 	g_values[idx2] = g_values[idx1] + poseDistance(vertices[idx1], vertices[idx2]);
+	y_values[idx2] = y_values[idx1] + stateYawDistance(vertices[idx1], vertices[idx2]);
 	return;
 }
 
@@ -119,18 +122,31 @@ double GraphClass::getGValue(int idx) {
 	return g_values[idx];
 }
 
+// 获取该节点到根节点路径的累计 yaw 旋转角度
+double GraphClass::getYValue(int idx) {
+	return y_values[idx];
+}
+
 // 更新指定节点的g值，并更新他所有子节点的g值
-void GraphClass::updateGValue(int idx, double val) {
-	g_values[idx] = val;
-	for (int successor: getSuccessors(idx)) {
-		updateGValue(successor, g_values[idx] + poseDistance(getVertex(idx), getVertex(successor)));
-	}
+void GraphClass::updateGYValue(int idx, double g_val, double y_val) {
+	g_values[idx] = g_val;
+	y_values[idx] = y_val;
+	for (int successor: getSuccessors(idx))
+		updateGYValue(successor,
+			g_values[idx] + poseDistance(getVertex(idx), getVertex(successor)),
+			y_values[idx] + stateYawDistance(getVertex(idx), getVertex(successor)));
 }
 
 // 通过添加根顶点(idx=0)并设置g(idx)=0来初始化图形。
-void GraphClass::init(State q) {
+void GraphClass::init(State s, bool cost_add_yaw_flag, double cost_add_yaw_length_weight, double cost_add_yaw_yaw_weight) {
 	int q_init = 0;
-	addVertex(q_init, q);
+	addVertex(q_init, s);
 	g_values[q_init] = 0;
+	y_values[q_init] = 0;
+
+	// 路径质量中是否添加 yaw
+	cost_add_yaw_flag_ = cost_add_yaw_flag;
+	cost_add_yaw_length_weight_ = cost_add_yaw_length_weight;
+	cost_add_yaw_yaw_weight_ = cost_add_yaw_yaw_weight;
 	return;
 }

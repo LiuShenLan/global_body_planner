@@ -14,7 +14,6 @@ namespace planning_utils {
 			printf("%4.3f, ", vec[i]);
 		printf("\b\b} ");
 	}
-
 	// 打印动作
 	void printAction(Action a) {
 		std::cout << "{";
@@ -22,7 +21,6 @@ namespace planning_utils {
 			std::cout << a[i] << ", ";
 		std::cout << "\b\b}";
 	}
-
 	// 打印int类型元素组成的向量
 	void printVectorInt(std::vector<int> vec) {
 		std::cout << "{";
@@ -30,24 +28,20 @@ namespace planning_utils {
 			std::cout << vec[i] << ", ";
 		std::cout << "\b\b}";
 	}
-
 	// 打印xxx并附加新行(下同)
 	void printStateNewline(State vec) {
 		printState(vec);
 		std::cout << std::endl;
 	}
-
 	void printActionNewline(Action a) {
 		printAction(a);
 		std::cout << std::endl;
 	}
-
 	// 打印状态序列
 	void printStateSequence(std::vector <State> state_sequence) {
 		for (State s: state_sequence)
 			printStateNewline(s);
 	}
-
 	// 打印插值的状态序列(?)
 	void printInterpStateSequence(std::vector <State> state_sequence, std::vector<double> interp_t) {
 		for (int i = 0; i < state_sequence.size(); i++) {
@@ -55,16 +49,48 @@ namespace planning_utils {
 			printStateNewline(state_sequence[i]);
 		}
 	}
-
 	// 打印动作序列
 	void printActionSequence(std::vector <Action> action_sequence) {
 		for (Action a: action_sequence)
 			printActionNewline(a);
 	}
-
 	void printVectorInt_nl(std::vector<int> vec) {
 		printVectorInt(vec);
 		std::cout << std::endl;
+	}
+	// 打印状态序列
+	void printStateSequenceXYZPYaw(const std::vector<State> &state_sequence) {
+		std::cout << "---------- discrete state sequence ----------" << std::endl;
+		double path_length = 0, path_yaw = 0;
+		double path_length_temp, path_yaw_temp;
+		for (int i = 0; i < state_sequence.size() - 1; ++i) {
+			// 打印状态
+			printStateXYZPYaw(state_sequence[i]);
+
+			// 打印两个状态之间的差值
+			path_length_temp = poseDistance(state_sequence[i], state_sequence[i + 1]);
+			path_yaw_temp = stateYawDistance(state_sequence[i], state_sequence[i + 1]);
+			std::cout << "           |            |            |            |            "
+				<< " | length: " << std::setw(6) << std::setprecision(3) << path_length_temp <<
+				" | yaw: " << std::setw(6) << std::setprecision(3) << path_yaw_temp << std::endl;
+
+			// 累计差值
+			path_length += path_length_temp;
+			path_yaw += path_yaw_temp;
+		}
+		printStateXYZPYaw(state_sequence.back());
+
+		std::cout << "path length: " << std::setw(6) << std::setprecision(3) << path_length << std::endl;
+		std::cout << "path yaw:    " << std::setw(6) << std::setprecision(3) << path_yaw << std::endl;
+
+	}
+	void printStateXYZPYaw(const State &s) {
+		std::cout << "x: " << std::setw(7) << std::setprecision(3) << s[0]
+			<< " | y: " << std::setw(7) << std::setprecision(3) << s[1]
+			<< " | z: " << std::setw(7) << std::setprecision(3) << s[2]
+			<< " | p: " << std::setw(7) << std::setprecision(4) << s[6]
+			<< " | yaw: " << std::setw(6) << std::setprecision(3) << std::atan2(s[4], s[3])
+			<< " |"  << std::endl;
 	}
 
 	// 在两个状态之间进行插值
@@ -76,8 +102,9 @@ namespace planning_utils {
 		return q_out;
 	}
 
-	// 计算两个状态对应位姿(x, y, z)之间的三维欧氏距离
-	double poseDistance(State q1, State q2) {
+	// 计算两个状态之间的距离
+	double poseDistance(const State &q1, const State &q2) {
+		// 三维欧式距离
 		double sum = 0;
 		for (int i = 0; i < POSEDIM; i++) {
 			sum = sum + (q2[i] - q1[i]) * (q2[i] - q1[i]);
@@ -86,9 +113,8 @@ namespace planning_utils {
 		double dist = sqrt(sum);
 		return dist;
 	}
-
-	// 计算两个状态之间的多维欧氏距离
-	double stateDistance(State q1, State q2) {
+	double stateDistance(const State &q1, const State &q2) {
+		// 多维欧氏距离
 		double sum = 0;
 		State state_weight = {1, 1, 1, 1, 1, 1, 1, 1};
 
@@ -246,10 +272,6 @@ namespace planning_utils {
 
 		return s_new;
 	}
-
-	// 在支撑相时，利用当前的状态和动作，根据论文中公式(6,7)计算下一个状态，时间为支撑相时间
-	// s: 初始状态
-	// a: 给定动作
 	State applyStance(State s, Action a) {
 		return applyStance(s, a, a[6]);
 	}
@@ -343,10 +365,6 @@ namespace planning_utils {
 
 		return s_new;
 	}
-
-	// 在支撑相时，利用当前的状态和动作，根据论文中公式(6,7)计算前一个状态，时间为0，即整个支撑相与飞行相都在移动
-	// s: 结束状态
-	// a: 给定动作
 	State applyStanceReverse(State s, Action a) {
 		return applyStanceReverse(s, a, 0);
 	}
@@ -358,11 +376,11 @@ namespace planning_utils {
 	// action_direction_sampling_probability_threshold_: 启用后的概率阈值
 	// s: 树外节点
 	// s_near: 树中节点
-	Action getRandomAction(std::array<double, 3> surf_norm, int direction, bool action_direction_sampling_flag_, double action_direction_sampling_probability_threshold_, State s, State s_near) {
+	Action getRandomAction(std::array<double, 3> surf_norm, int direction, bool action_direction_sampling_flag, double action_direction_sampling_probability_threshold, State s, State s_near) {
 		Action a_test;
 		double probability = (double) rand() / RAND_MAX;	// 随机数概率
 
-		if (action_direction_sampling_flag_ and probability <= action_direction_sampling_probability_threshold_) {	// 启用
+		if (action_direction_sampling_flag and probability <= action_direction_sampling_probability_threshold) {	// 启用
 			if (direction == FORWARD)
 				a_test = getRandomActionDirection(surf_norm, s_near, s);
 			else
@@ -371,9 +389,6 @@ namespace planning_utils {
 			a_test = getRandomAction(surf_norm);
 		return a_test;
 	}
-
-	// 获取随机动作
-	// surf_norm: 高程图表面法线
 	Action getRandomAction(std::array<double, 3> surf_norm) {
 		Action a;
 
@@ -425,11 +440,6 @@ namespace planning_utils {
 
 		return a;
 	}
-
-	// 获取有指向性的随机动作
-	// surf_norm: 高程图表面法线
-	// s_from: 起点状态
-	// s_to: 终点状态
 	Action getRandomActionDirection(std::array<double, 3> surf_norm, State s_from, State s_to) {
 		// std::cout << "getRandomActionDirection()" << std::endl;	// TODO: 记得删除
 		Action a;
@@ -624,21 +634,20 @@ namespace planning_utils {
 		return true;
 	}
 
-	// 检查状态动作对，并判断是否使用自适应步长
+	// 给定初始状态与动作对，检查该状态动作对在给定支撑相与飞行相时间的运动中，所到达的状态是否均为有效状态，同时记录最远有效状态到s_new中，并判断是否使用自适应步长
+	// s: 树中状态节点，即为初始状态
+	// a: 给定动作
+	// terrain: 高程图
+	// s_new: 在给定初始状态和动作的情况下，遍历移动时间所能够走到的最远的有效状态
+	// t_new: 到达s_new的时间
+	// state_action_pair_check_adaptive_step_size_flag: 是否使用自适应步长
+	// 返回值：站立相和飞行相轨迹是否全部有效
 	bool isValidStateActionPair(State s, Action a, FastTerrainMap &terrain, State &s_new, double &t_new, bool state_action_pair_check_adaptive_step_size_flag) {
 		if (state_action_pair_check_adaptive_step_size_flag)
 			return isValidStateActionPairAdaptiveStepSize(s, a, terrain, s_new, t_new);
 		else
 			return isValidStateActionPair(s, a, terrain, s_new, t_new);
 	}
-
-	// 给定初始状态与动作对，检查该状态动作对在给定支撑相与飞行相时间的运动中，所到达的状态是否均为有效状态，同时记录最远有效状态到s_new中，添加自适应步长
-	// s: 树中状态节点，即为初始状态
-	// a: 给定动作
-	// terrain: 高程图
-	// s_new: 在给定初始状态和动作的情况下，遍历移动时间所能够走到的最远的有效状态
-	// t_new: 到达s_new的时间
-	// 返回值：站立相和飞行相轨迹是否全部有效
 	bool isValidStateActionPairAdaptiveStepSize(State s, Action a, FastTerrainMap &terrain, State &s_new, double &t_new) {
 		// std::cout << "isValidStateActionPairAdaptiveStepSize()" << std::endl;
 		double t_s = a[6];	// 支撑相时间
@@ -682,14 +691,9 @@ namespace planning_utils {
 			State s_check = applyFlight(s_takeoff, t);	// 根据抬腿时刻的状态和飞行相时间，计算得到下一个状态
 
 			// 若下一个状态无效，则抛弃掉整段飞行相轨迹
-			if (isValidState(s_check, terrain, FLIGHT) == false) {
-				if (KINEMATICS_RES - 0.01 <= time_step and time_step <= KINEMATICS_RES + 0.01)
-					return false;
-				else {
-					time_step = KINEMATICS_RES;
-					t = t_pre_success;
-				}
-			} else {	// 下一个状态有效，记录自适应步长参数
+			if (isValidState(s_check, terrain, FLIGHT) == false)
+				return false;
+			else {	// 下一个状态有效，记录自适应步长参数
 				time_step += KINEMATICS_RES;
 				t_pre_success = t;
 			}
@@ -706,14 +710,6 @@ namespace planning_utils {
 		// 站立相和飞行相轨迹完全有效
 		return true;
 	}
-
-	// 给定初始状态与动作对，检查该状态动作对在给定支撑相与飞行相时间的运动中，所到达的状态是否均为有效状态，同时记录最远有效状态到s_new中
-	// s: 树中状态节点，即为初始状态
-	// a: 给定动作
-	// terrain: 高程图
-	// s_new: 在给定初始状态和动作的情况下，遍历移动时间所能够走到的最远的有效状态
-	// t_new: 到达s_new的时间
-	// 返回值：站立相和飞行相轨迹是否全部有效
 	bool isValidStateActionPair(State s, Action a, FastTerrainMap &terrain, State &s_new, double &t_new) {
 		double t_s = a[6];	// 支撑相时间
 		double t_f = a[7];	// 飞行相时间
@@ -755,33 +751,26 @@ namespace planning_utils {
 		// 站立相和飞行相轨迹完全有效
 		return true;
 	}
-
-	// 给定初始状态与动作对，检查该状态动作对在给定支撑相与飞行相时间的运动中，所到达的状态是否均为有效状态
-	// s: 树中状态节点，即为初始状态
-	// a: 给定动作
-	// terrain: 高程图
-	// 返回值：站立相和飞行相轨迹是否全部有效
 	bool isValidStateActionPair(State s, Action a, FastTerrainMap &terrain) {
 		State dummy_state;
 		double dummy_time;
 		return isValidStateActionPair(s, a, terrain, dummy_state, dummy_time);
 	}
 
-	// 检查动作状态对，并判断是否使用自适应步长
+	// 给定结束状态与动作对，检查该状态动作对在给定支撑相与飞行相时间的运动中，所到达的状态是否均为有效状态，同时记录最远有效状态到s_new中，并判断是否使用自适应步长
+	// s: 树中状态节点，即为结束状态
+	// a: 给定动作
+	// terrain: 高程图
+	// s_new: 在给定结束状态和动作的情况下，遍历移动时间所能够走到的最远的有效状态
+	// t_new: 到达s_new的时间
+	// state_action_pair_check_adaptive_step_size_flag: 是否使用自适应步长
+	// 返回值：站立相和飞行相轨迹是否全部有效
 	bool isValidStateActionPairReverse(State s, Action a, FastTerrainMap &terrain, State &s_new, double &t_new, bool state_action_pair_check_adaptive_step_size_flag) {
 		if (state_action_pair_check_adaptive_step_size_flag)
 			return isValidStateActionPairReverseAdaptiveStepSize(s, a, terrain, s_new, t_new);
 		else
 			return isValidStateActionPairReverse(s, a, terrain, s_new, t_new);
 	}
-
-	// 给定结束状态与动作对，检查该状态动作对在给定支撑相与飞行相时间的运动中，所到达的状态是否均为有效状态，同时记录最远有效状态到s_new中，添加自适应步长
-	// s: 树中状态节点，即为结束状态
-	// a: 给定动作
-	// terrain: 高程图
-	// s_new: 在给定结束状态和动作的情况下，遍历移动时间所能够走到的最远的有效状态
-	// t_new: 到达s_new的时间
-	// 返回值：站立相和飞行相轨迹是否全部有效
 	bool isValidStateActionPairReverseAdaptiveStepSize(State s, Action a, FastTerrainMap &terrain, State &s_new, double &t_new) {
 		// std::cout << "isValidStateActionPairReverseAdaptiveStepSize()" << std::endl;
 		double t_s = a[6];	// 支撑相时间
@@ -794,14 +783,9 @@ namespace planning_utils {
 		for (double t = 0; t < t_f; t += time_step) {
 			State s_check = applyFlight(s, -t);	// 根据结束状态和飞行相时间，计算得到前一个状态
 
-			if (isValidState(s_check, terrain, FLIGHT) == false) {	// 计算出的状态无效
-				if (KINEMATICS_RES - 0.01 <= time_step and time_step <= KINEMATICS_RES + 0.01)	// 当前步长接近分辨率，即动作失败
-					return false;
-				else {
-					time_step = KINEMATICS_RES;
-					t = t_pre_success;
-				}
-			} else {
+			if (isValidState(s_check, terrain, FLIGHT) == false)	// 计算出的状态无效
+				return false;
+			else {
 				time_step += KINEMATICS_RES;
 				t_pre_success = t;
 			}
@@ -850,14 +834,6 @@ namespace planning_utils {
 		// 站立相和飞行相轨迹完全有效
 		return true;
 	}
-
-	// 给定结束状态与动作对，检查该状态动作对在给定支撑相与飞行相时间的运动中，所到达的状态是否均为有效状态，同时记录最远有效状态到s_new中
-	// s: 树中状态节点，即为结束状态
-	// a: 给定动作
-	// terrain: 高程图
-	// s_new: 在给定结束状态和动作的情况下，遍历移动时间所能够走到的最远的有效状态
-	// t_new: 到达s_new的时间
-	// 返回值：站立相和飞行相轨迹是否全部有效
 	bool isValidStateActionPairReverse(State s, Action a, FastTerrainMap &terrain, State &s_new, double &t_new) {
 		double t_s = a[6];	// 支撑相时间
 		double t_f = a[7];	// 飞行相时间
@@ -898,16 +874,38 @@ namespace planning_utils {
 		// 站立相和飞行相轨迹完全有效
 		return true;
 	}
-
-	// 给定结束状态与动作对，检查该状态动作对在给定支撑相与飞行相时间的运动中，所到达的状态是否均为有效状态，同时记录最远有效状态到s_new中
-	// s: 树中状态节点，即为结束状态
-	// a: 给定动作
-	// terrain: 高程图
-	// 返回值：站立相和飞行相轨迹是否全部有效
 	bool isValidStateActionPairReverse(State s, Action a, FastTerrainMap &terrain) {
 		State dummy_state;
 		double dummy_time;
 		return isValidStateActionPairReverse(s, a, terrain, dummy_state, dummy_time);
+	}
+
+	// 三点法计算曲率
+	double calculateCurvature(double x1, double y1, double x2, double y2, double x3, double y3) {
+		if ((x1 == x2 and x2 == x3) or (y1 == y2 and y2 == y3))
+			return 0;
+		double curvature;
+		double dis12,dis13,dis23, cosA,sinA,dis;
+		dis12 = sqrt((x1 - x2) * (x1 - x2) + (y1 - y2) * (y1 - y2));
+		dis13 = sqrt((x1 - x3) * (x1 - x3) + (y1 - y3) * (y1 - y3));
+		dis23 = sqrt((x2 - x3) * (x2 - x3) + (y2 - y3) * (y2 - y3));
+		dis = dis12 * dis12 + dis23 * dis23 - dis13 * dis13;
+		cosA = dis/(2 * dis12 * dis23);//余弦定理求角度
+		sinA = sqrt(1 - cosA*cosA);//求正弦
+		curvature = 0.5 * dis13 / sinA;//正弦定理求外接圆半径
+		curvature = 1/curvature;//半径的倒数是曲率，半径越小曲率越大
+		return curvature;
+	}
+	// 计算插值后机器人身体规划状态数组中的最大曲率
+	double calculateMaxCurvature(std::vector<State> &body_plan) {
+		int length = body_plan.size();
+		double max_curvature = 0;
+		for (int i = 0; i < length - 2; ++i)
+			max_curvature = std::max(max_curvature,
+									 calculateCurvature(body_plan[i][0], body_plan[i][1],
+													    body_plan[i + 1][0], body_plan[i + 1][1],
+														body_plan[i + 2][0], body_plan[i + 2][1]));
+		return max_curvature;
 	}
 
 }

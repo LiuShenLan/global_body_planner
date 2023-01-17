@@ -12,8 +12,8 @@ using namespace planning_utils;
 // s_existing: 已经在树中并且最接近指定状态的状态
 // s: 需要将树延伸到的指定状态
 // t_s: 此连接的支撑相时间
-// s_new: 通过采取最终行动产生的新状态
-// a_new: 连接各个状态的新行动
+// s_new: 输出值，通过采取最终行动产生的新状态
+// a_new: 输出值，连接各个状态的新行动
 // terrain: 高程图
 // direction: 方向(FORWARD 或 REVERSE)
 // 返回值: 尝试的结果(TRAPPED, ADVANCED 或 REACHED)
@@ -65,8 +65,10 @@ int RRTConnectClass::attemptConnect(State s_existing, State s, double t_s, State
 	// If the connection results in an infeasible action, abort and return trapped	如果连接导致不可行的操作，则中止并返回被困
 	if (isValidAction(a_new) == true) {	// 该动作有效(地面反作用力与摩擦锥符合条件)
 		// 检查给定的状态动作对在给定支撑相与飞行相时间的运动中，所到达的状态是否均为有效状态，同时记录最远有效状态到s_new中
-		bool isValid = (direction == FORWARD) ? (isValidStateActionPair(s_start, a_new, terrain, s_new, t_new, state_action_pair_check_adaptive_step_size_flag_))
-											  : (isValidStateActionPairReverse(s_goal, a_new, terrain, s_new, t_new, state_action_pair_check_adaptive_step_size_flag_));
+		bool isValid = (direction == FORWARD) ? (isValidStateActionPair(s_start, a_new, terrain, s_new, t_new,
+																		state_action_pair_check_adaptive_step_size_flag_))
+											  : (isValidStateActionPairReverse(s_goal, a_new, terrain, s_new, t_new,
+																			   state_action_pair_check_adaptive_step_size_flag_));
 
 		// If valid, great, return REACHED, otherwise try again to the valid state returned by isValidStateActionPair
 		if (isValid == true)	// 动作状态对有效，返回 REACHED
@@ -80,15 +82,6 @@ int RRTConnectClass::attemptConnect(State s_existing, State s, double t_s, State
 	}
 	return TRAPPED;
 }
-
-// 尝试连接两个状态，如果无法完全连接则返回一个新状态，并将该状态存储到s_new中。 内部计算站立时间
-// s_existing: 已经在树中并且最接近指定状态的状态
-// s: 需要将树延伸到的指定状态
-// s_new: 通过采取最终行动产生的新状态
-// a_new: 连接各个状态的新行动
-// terrain: 高程图
-// direction: 方向(FORWARD 或 REVERSE)
-// 返回值: 尝试的结果(TRAPPED, ADVANCED 或 REACHED)
 int RRTConnectClass::attemptConnect(State s_existing, State s, State &s_new, Action &a_new, FastTerrainMap &terrain,
 									int direction) {
 	// select desired stance time to enforce a nominal stance velocity
@@ -96,7 +89,6 @@ int RRTConnectClass::attemptConnect(State s_existing, State s, State &s_new, Act
 	double t_s = poseDistance(s, s_existing) / V_NOM;
 	return attemptConnect(s_existing, s, t_s, s_new, a_new, terrain, direction);
 }
-
 
 // 将树连接到指定状态
 // T: 包含树的 PlannerClass 实例
@@ -114,11 +106,14 @@ int RRTConnectClass::connect(PlannerClass &T, State s, FastTerrainMap &terrain, 
 	// 尝试连接到最近的邻居，如果结果为 REACHED 或 ADVANCED 则添加到图
 	int result = attemptConnect(s_near, s, s_new, a_new, terrain, direction);
 	if (result != TRAPPED) {
+		// 添加节点 s_new，使得 s_near_index 指向 s_new
 		int s_new_index = T.getNumVertices();	// 新状态节点index
 		T.addVertex(s_new_index, s_new);		// 添加新状态节点
 		T.addEdge(s_near_index, s_new_index);	// 连接新状态节点
 		T.addAction(s_new_index, a_new);		// 添加从 s_near_index 走向 s_new_index 的动作 a_new
-		T.updateGValue(s_new_index, T.getGValue(s_near_index) + poseDistance(s_near, s_new));	// 更新新节点的g值
+		T.updateGYValue(s_new_index,			// 更新节点的 g 值和 y 值
+						T.getGValue(s_near_index) + poseDistance(s_near, s_new),
+						T.getYValue(s_near_index) + stateYawDistance(s_near, s_new));
 	}
 
 	return result;
@@ -127,10 +122,10 @@ int RRTConnectClass::connect(PlannerClass &T, State s, FastTerrainMap &terrain, 
 // 沿着指定路径的节点索引获取动作（假设动作与它们执行时的状态同步）
 // T: 包含树的 PlannerClass 实例
 // path: 路径
-std::vector<Action> RRTConnectClass::getActionSequenceReverse(PlannerClass &T, std::vector<int> path) {
+std::vector <Action> RRTConnectClass::getActionSequenceReverse(PlannerClass &T, std::vector<int> path) {
 	// Assumes that actions are synched with the states at which they are executed (opposite of the definition in RRTClass)
 	// 假设动作与它们执行时的状态同步(与 RRTClass 中的定义相反)	TODO: ?
-	std::vector<Action> action_sequence;
+	std::vector <Action> action_sequence;
 	for (int i = 0; i < path.size() - 1; ++i) {
 		action_sequence.push_back(T.getAction(path.at(i)));
 	}
@@ -141,7 +136,7 @@ std::vector<Action> RRTConnectClass::getActionSequenceReverse(PlannerClass &T, s
 // state_sequence: 状态序列
 // action_sequence: 动作序列
 // terrain: 高程图
-void RRTConnectClass::postProcessPath(std::vector<State> &state_sequence, std::vector<Action> &action_sequence,
+void RRTConnectClass::postProcessPath(std::vector <State> &state_sequence, std::vector <Action> &action_sequence,
 									  FastTerrainMap &terrain) {
 	auto t_start = std::chrono::high_resolution_clock::now();
 
@@ -154,15 +149,17 @@ void RRTConnectClass::postProcessPath(std::vector<State> &state_sequence, std::v
 	Action a_next;
 
 	// Initialize state and action sequences
-	std::vector<State> new_state_sequence;		// 优化后状态序列
+	std::vector <State> new_state_sequence;	// 优化后状态序列
 	new_state_sequence.push_back(s);
-	std::vector<Action> new_action_sequence;	// 优化后动作序列
-	path_quality_ = 0;
+	std::vector <Action> new_action_sequence;	// 优化后动作序列
+	path_length_ = 0;
+	path_yaw_ = 0;
+	path_cost_ = 0;
 
 	// 迭代直到目标被添加到状态序列
 	while (s != s_goal) {
-		std::vector<State> state_sequence_copy = state_sequence;	// 原始状态序列副本
-		std::vector<Action> action_sequence_copy = action_sequence;	// 原始动作序列副本
+		std::vector <State> state_sequence_copy = state_sequence;		// 原始状态序列副本
+		std::vector <Action> action_sequence_copy = action_sequence;	// 原始动作序列副本
 
 		// 反向遍历状态序列得到s_next，尝试将当前状态s连接到s_next
 		// 如果连接失败，则将s_next在状态序列中取前一个状态，直到连接成功或状态序列为空
@@ -187,12 +184,36 @@ void RRTConnectClass::postProcessPath(std::vector<State> &state_sequence, std::v
 		if (s != s_next) {	// 连接成功，将成功连接的状态与动作添加到优化后的状态序列与动作序列，并记录路径质量
 			new_state_sequence.push_back(s_next);
 			new_action_sequence.push_back(a_new);
-			path_quality_ += poseDistance(s, s_next);
+
+			// path_length_ += poseDistance(s, s_next);
+			// path_yaw_ += stateYawDistance(s, s_next);
+			// path_cost_ += stateDistance(s, s_next, cost_add_yaw_flag_, cost_add_yaw_length_weight_, cost_add_yaw_yaw_weight_);
+
+			double delta_length = poseDistance(s, s_next);
+			double delta_yaw = stateYawDistance(s, s_next);
+			path_length_ += delta_length;
+			path_yaw_ += delta_yaw;
+			if (cost_add_yaw_flag_)
+				path_cost_ += delta_length * cost_add_yaw_length_weight_ + delta_yaw * cost_add_yaw_yaw_weight_;
+			else
+				path_cost_ += delta_length;
+
 			s = s_next;
 		} else {	// 连接失败，则将起点的下一个状态直接添加到优化后的状态序列与动作序列
 			new_state_sequence.push_back(old_state);
 			new_action_sequence.push_back(old_action);
-			path_quality_ += poseDistance(s, old_state);
+
+			// path_length_ += poseDistance(s, old_state);
+			// path_yaw_ += stateYawDistance(s, old_state);
+			// path_cost_ += stateDistance(s, old_state, cost_add_yaw_flag_, cost_add_yaw_length_weight_, cost_add_yaw_yaw_weight_);
+
+			double delta_length = poseDistance(s, old_state);
+			double delta_yaw = stateYawDistance(s, old_state);
+			if (cost_add_yaw_flag_)
+				path_cost_ += delta_length * cost_add_yaw_length_weight_ + delta_yaw * cost_add_yaw_yaw_weight_;
+			else
+				path_cost_ += delta_length;
+
 			s = old_state;
 		}
 	}
@@ -225,9 +246,10 @@ void RRTConnectClass::runRRTConnect(PlannerClass &Ta, PlannerClass &Tb, FastTerr
 
 		// 随机指向性状态采样
 		State s_from = Ta.getVertex(Ta.getNumVertices() - 1), s_to = Tb.getVertex(0);
-		State s_rand = Ta.randomState(terrain, state_direction_sampling_flag_, state_direction_sampling_probability_threshold_, s_from, s_to);
-
-		// static int i = 0;	// TODO: 有用？
+		State s_rand = Ta.randomState(terrain, state_direction_sampling_flag_,
+									  state_direction_sampling_probability_threshold_,
+									  state_direction_sampling_speed_direction_flag_,
+									  s_from, s_to);
 
 		if (isValidState(s_rand, terrain, STANCE)) {	// 检查随机状态是否有效
 
@@ -241,7 +263,14 @@ void RRTConnectClass::runRRTConnect(PlannerClass &Ta, PlannerClass &Tb, FastTerr
 
 					auto t_end = std::chrono::high_resolution_clock::now();
 					elapsed_to_first = t_end - t_start;
-					path_quality_ = Ta.getGValue(Ta.getNumVertices() - 1) + Tb.getGValue(Tb.getNumVertices() - 1);	// 更新路径质量
+
+					// 更新路径质量
+					path_length_ = Ta.getGValue(Ta.getNumVertices() - 1) + Tb.getGValue(Tb.getNumVertices() - 1);
+					path_yaw_ = Ta.getYValue(Ta.getNumVertices() - 1) + Tb.getYValue(Tb.getNumVertices() - 1);
+					if (cost_add_yaw_flag_)
+						path_cost_ = path_length_ * cost_add_yaw_length_weight_ + path_yaw_ * cost_add_yaw_yaw_weight_;
+					else
+						path_cost_ = path_length_;
 					break;
 				}
 			}
@@ -252,7 +281,10 @@ void RRTConnectClass::runRRTConnect(PlannerClass &Ta, PlannerClass &Tb, FastTerr
 
 		// 随机指向性状态采样
 		s_from = Ta.getVertex(0), s_to = Tb.getVertex(Tb.getNumVertices() - 1);
-		s_rand = Tb.randomState(terrain, state_direction_sampling_flag_, state_direction_sampling_probability_threshold_, s_from, s_to);
+		s_rand = Tb.randomState(terrain, state_direction_sampling_flag_,
+								state_direction_sampling_probability_threshold_,
+								state_direction_sampling_speed_direction_flag_,
+								s_from, s_to);
 
 		if (isValidState(s_rand, terrain, STANCE)) {	// 检查随机状态是否有效
 
@@ -266,7 +298,14 @@ void RRTConnectClass::runRRTConnect(PlannerClass &Ta, PlannerClass &Tb, FastTerr
 
 					auto t_end = std::chrono::high_resolution_clock::now();
 					elapsed_to_first = t_end - t_start;
-					path_quality_ = Ta.getGValue(Ta.getNumVertices() - 1) + Tb.getGValue(Tb.getNumVertices() - 1);	// 更新路径质量
+
+					// 更新路径质量
+					path_length_ = Ta.getGValue(Ta.getNumVertices() - 1) + Tb.getGValue(Tb.getNumVertices() - 1);
+					path_yaw_ = Ta.getYValue(Ta.getNumVertices() - 1) + Tb.getYValue(Tb.getNumVertices() - 1);
+					if (cost_add_yaw_flag_)
+						path_cost_ = path_length_ * cost_add_yaw_length_weight_ + path_yaw_ * cost_add_yaw_yaw_weight_;
+					else
+						path_cost_ = path_length_;
 					break;
 				}
 			}
@@ -282,39 +321,47 @@ void RRTConnectClass::runRRTConnect(PlannerClass &Ta, PlannerClass &Tb, FastTerr
 // action_sequence: 最终路径中的动作序列
 // max_time_opt: 停止重新规划的时间
 void RRTConnectClass::buildRRTConnect(FastTerrainMap &terrain, State s_start, State s_goal,
-									  std::vector<State> &state_sequence, std::vector<Action> &action_sequence,
+									  std::vector <State> &state_sequence, std::vector <Action> &action_sequence,
 									  double max_time_opt) {
 	auto t_start = std::chrono::high_resolution_clock::now();
-	success_ = 0;    // 在5秒内计算出解决方案的次数
+	success_ = 0;	// 在5秒内计算出解决方案的次数
 
-	cost_vector_.clear();        // 每次找到更好的成本数组
-	cost_vector_times_.clear();    // 每次找到更好的成本的时间数组
+	// 每次运行规划算法时的数据
+	length_vector_.clear();		// 最短路径长度
+	yaw_vector_.clear();		// 最小路径 yaw 旋转
+	cost_vector_.clear();		// 最优路径质量
+	cost_vector_times_.clear();	// 消耗时间
 
-	std::cout << "RRT Connect" << std::endl;
+	std::cout << "RRT Connecting..." << std::endl;
 
-	goal_found = false;    // 是否到达目标
+	goal_found = false;	// 是否到达目标
 	PlannerClass Ta;
 	PlannerClass Tb;
 	PlannerClass Ta_best;
 	PlannerClass Tb_best;
 
 	// Initialize anytime horizon	初始化允许规划器搜索直到重新启动的时间范围
-	anytime_horizon = poseDistance(s_start, s_goal) / planning_rate_estimate;    // 允许规划器搜索直到重新启动的时间范围(秒)
-	num_vertices = 0;    // 树中节点的数量
+	anytime_horizon = poseDistance(s_start, s_goal) / planning_rate_estimate;	// 允许规划器搜索直到重新启动的时间范围(秒)
+	num_vertices = 0;	// 树中节点的数量
 
-	double cost_so_far = INFTY;	// 最优路径质量(即最短路径长度)
+	double length_so_far = INFTY;	// 最短路径长度
+	double yaw_so_far = INFTY;		// 最小路径 yaw 旋转
+	double cost_so_far = INFTY;		// 最优路径质量
 	while (true) {
+		// 新建树
 		Ta = PlannerClass();
 		Tb = PlannerClass();
-		Ta.init(s_start);    // 通过添加根节点(idx=0)并设置g(idx)=0来初始化图形。
-		Tb.init(s_goal);
+		Ta.init(s_start, cost_add_yaw_flag_, cost_add_yaw_length_weight_, cost_add_yaw_yaw_weight_);	// 通过添加根节点(idx=0)并设置g(idx)=0来初始化图形。
+		Tb.init(s_goal, cost_add_yaw_flag_, cost_add_yaw_length_weight_, cost_add_yaw_yaw_weight_);
+
 
 		goal_found = false;
 		runRRTConnect(Ta, Tb, terrain);	// 运行一次RRT-Connect计划器(起点树和终点树各尝试扩展到一个随机状态)，直到找到目标。
 
 		// 记录统计信息
 		num_vertices += (Ta.getNumVertices() + Tb.getNumVertices());	// 添加树中节点的数量
-		// saveStateSequence(Ta);	// TODO: 记录树中所有状态
+		// TODO: 记录树中所有状态，用于在高程图中显示所有的遍历到的状态
+		// saveStateSequence(Ta);
 		// saveStateSequence(Tb);
 
 		// 超时
@@ -333,6 +380,8 @@ void RRTConnectClass::buildRRTConnect(FastTerrainMap &terrain, State s_start, St
 		// 到达目标，将两棵树进行连接并计算得到状态序列与动作序列，之后通过删除可以绕过的无关状态来对路径进行后处理优化
 		if (goal_found == true) {
 			// Get both paths, remove the back of path_b and reverse it to align with path a
+
+			// 生成插值前状态路径序列
 			// 计算根节点到最后向树中添加的节点的路径
 			std::vector<int> path_a = pathFromStart(Ta, Ta.getNumVertices() - 1);	// 节点index路劲	[起点, 中间状态]
 			std::vector<int> path_b = pathFromStart(Tb, Tb.getNumVertices() - 1);	// 节点index路径	[终点, 中间状态]
@@ -340,26 +389,32 @@ void RRTConnectClass::buildRRTConnect(FastTerrainMap &terrain, State s_start, St
 			// 反转路径b并删除路径b中与路径a重复的节点
 			std::reverse(path_b.begin(), path_b.end());	// 反转以终点为根节点的路径	[中间状态, 终点]
 			std::vector<Action> action_sequence_b = getActionSequenceReverse(Tb, path_b);	// 动作向量	[中间状态, 终点]
-			path_b.erase(path_b.begin());	// 删除重复的中间状态节点	(中间状态, 终点]
+			path_b.erase(path_b.begin());				// 删除重复的中间状态节点	(中间状态, 终点]
 
+			// 添加路径
 			state_sequence = getStateSequence(Ta, path_a);	// 状态路径， [起点, 中间状态]
 			std::vector<State> state_sequence_b = getStateSequence(Tb, path_b);	// 状态路径	(中间状态, 终点]
 			state_sequence.insert(state_sequence.end(), state_sequence_b.begin(), state_sequence_b.end());	// 状态路径	[起点, 终点]
 
+			// 生成动作序列
 			action_sequence = getActionSequence(Ta, path_a);	// 动作向量	[起点, 中间状态]
 			action_sequence.insert(action_sequence.end(), action_sequence_b.begin(), action_sequence_b.end());	// 动作向量	[起点, 终点]
 
 			postProcessPath(state_sequence, action_sequence, terrain);	// 通过删除可以绕过的无关状态来对路径进行后处理优化
 
-			// 当前路径质量优于最优路径质量时，记录此时数据
-			if (path_quality_ < cost_so_far) {
-				cost_so_far = path_quality_;
+			// 当前路径长度优于最短路径长度时，记录此时数据
+			if (path_cost_ < cost_so_far) {
+				length_so_far = path_length_;
+				yaw_so_far = path_yaw_;
+				cost_so_far = path_cost_;
 				Ta_best = Ta;
 				Tb_best = Tb;
 
 				t_current = std::chrono::high_resolution_clock::now();
 				current_elapsed = t_current - t_start;
 
+				length_vector_.push_back(length_so_far);
+				yaw_vector_.push_back(yaw_so_far);
 				cost_vector_.push_back(cost_so_far);
 				cost_vector_times_.push_back(current_elapsed.count());
 			}
@@ -375,19 +430,25 @@ void RRTConnectClass::buildRRTConnect(FastTerrainMap &terrain, State s_start, St
 	// 到达目标，将两棵树进行连接并计算得到状态序列与动作序列
 	if (goal_found == true) {
 		// Get both paths, remove the back of path_b and reverse it to align with path a
-		std::vector<int> path_a = pathFromStart(Ta, Ta.getNumVertices() - 1);
-		std::vector<int> path_b = pathFromStart(Tb, Tb.getNumVertices() - 1);
 
-		std::reverse(path_b.begin(), path_b.end());
-		std::vector<Action> action_sequence_b = getActionSequenceReverse(Tb, path_b);
-		path_b.erase(path_b.begin());
+		// 生成插值前状态路径序列
+		// 计算根节点到最后向树中添加的节点的路径
+		std::vector<int> path_a = pathFromStart(Ta, Ta.getNumVertices() - 1);	// 节点index路劲	[起点, 中间状态]
+		std::vector<int> path_b = pathFromStart(Tb, Tb.getNumVertices() - 1);	// 节点index路径	[终点, 中间状态]
 
-		state_sequence = getStateSequence(Ta, path_a);
-		std::vector<State> state_sequence_b = getStateSequence(Tb, path_b);
-		state_sequence.insert(state_sequence.end(), state_sequence_b.begin(), state_sequence_b.end());
+		// 反转路径b并删除路径b中与路径a重复的节点
+		std::reverse(path_b.begin(), path_b.end());	// 反转以终点为根节点的路径	[中间状态, 终点]
+		std::vector<Action> action_sequence_b = getActionSequenceReverse(Tb, path_b);	// 动作向量	[中间状态, 终点]
+		path_b.erase(path_b.begin());				// 删除重复的中间状态节点	(中间状态, 终点]
 
-		action_sequence = getActionSequence(Ta, path_a);
-		action_sequence.insert(action_sequence.end(), action_sequence_b.begin(), action_sequence_b.end());
+		// 添加路径
+		state_sequence = getStateSequence(Ta, path_a);	// 状态路径， [起点, 中间状态]
+		std::vector<State> state_sequence_b = getStateSequence(Tb, path_b);	// 状态路径	(中间状态, 终点]
+		state_sequence.insert(state_sequence.end(), state_sequence_b.begin(), state_sequence_b.end());	// 状态路径	[起点, 终点]
+
+		// 生成动作序列
+		action_sequence = getActionSequence(Ta, path_a);	// 动作向量	[起点, 中间状态]
+		action_sequence.insert(action_sequence.end(), action_sequence_b.begin(), action_sequence_b.end());	// 动作向量	[起点, 终点]
 	} else
 		std::cout << "Path not found" << std::endl;
 

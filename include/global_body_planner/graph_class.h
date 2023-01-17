@@ -55,9 +55,9 @@ public:
 	int getNumVertices();
 
 	/**
-	 * @brief Add a new edge to the graph	向图中添加连接idx1与idx2的边
-	 * @param[in] idx1 Index of the outgoing vertex of the edge
-	 * @param[in] idx2 Index of the incoming vertex of the edge
+	 * @brief Add a new edge to the graph	向图中添加连接父节点idx1与子节点idx2的边
+	 * @param[in] idx1 Index of the outgoing vertex of the edge	父节点
+	 * @param[in] idx2 Index of the incoming vertex of the edge	子节点
 	 */
 	virtual void addEdge(int idx1, int idx2);
 
@@ -98,11 +98,11 @@ public:
 	Action getAction(int idx);
 
 	/**
-	 * @brief Update the g-value of a vertex and propogate to all its successors	更新指定节点的g值，并更新他所有子节点的g值
+	 * @brief Update the g-value of a vertex and propogate to all its successors	更新指定节点的g值和y值，并更新其所有子节点的g值和y值
 	 * @param[in] idx Index of the desired vertex
 	 * @param[in] val New g-value corresponding to the desired vertex
 	 */
-	void updateGValue(int idx, double val);
+	void updateGYValue(int idx, double g_val, double y_val);
 
 	/**
 	 * @brief Get the g-value of a vertex	获取该节点到根节点的三维欧氏距离(g值)
@@ -110,6 +110,13 @@ public:
 	 * @return G-value corresponding to the desired vertex
 	 */
 	double getGValue(int idx);
+
+	/**
+	 * @brief Get the g-value of a vertex	获取该节点到根节点路径的累计 yaw 旋转角度
+	 * @param[in] idx Index of the desired vertex
+	 * @return G-value corresponding to the desired vertex
+	 */
+	double getYValue(int idx);
 
 	/**
 	 * @brief Print the state information via stdout
@@ -137,9 +144,11 @@ public:
 	 * @brief Initialize the graph by adding the root vertex (idx = 0) and setting g(idx) = 0
 	 * 		  通过添加根节点(idx=0)并设置g(idx)=0来初始化图形。
 	 * @param[in] s State for the root vertex
+	 * @param[in] cost_add_yaw_flag 是否启用路径质量中是否添加 yaw
+	 * @param[in] cost_add_yaw_length_weight 路径长度权重
+	 * @param[in] cost_add_yaw_yaw_weight yaw 权重
 	 */
-	virtual void init(State s);
-
+	virtual void init(State s, bool cost_add_yaw_flag, double cost_add_yaw_length_weight, double cost_add_yaw_yaw_weight);
 
 protected:
 	/// Map from vertex indices to corresponding states	节点index -> 相应状态
@@ -154,8 +163,16 @@ protected:
 	/// Map from vertex indices to their children	节点index -> 该节点的子节点index
 	std::unordered_map<int, std::vector<int> > successors;
 
-	/// Map from vertex indices to their costs (g-values)	节点index -> 该节点成本(g值，即与根节点的三维欧式距离)
+	/// Map from vertex indices to their costs (g-values)	节点index -> 该节点到根节点的三维欧氏距离
 	std::unordered_map<int, double> g_values;
+
+	/// 节点 index -> 该节点到根节点路径的累计 yaw 旋转角度
+	std::unordered_map<int, double> y_values;
+
+	/// 路径质量中是否添加 yaw
+	bool cost_add_yaw_flag_ = false;		// 是否启用
+	double cost_add_yaw_length_weight_ = 1;	// 路径长度权重
+	double cost_add_yaw_yaw_weight_ = 1;		// yaw 权重
 };
 
 #endif

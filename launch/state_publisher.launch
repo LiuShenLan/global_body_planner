@@ -2,13 +2,13 @@
 	<!-- 起点信息 -->
 	<arg name="start_position_x" default="0"/>
 	<arg name="start_position_y" default="0"/>
-	<arg name="start_position_z" default="0.375"/>
+	<arg name="start_position_z" default="0.3375"/>
 	<arg name="start_yaw" default="0"/>
 
 	<!-- 终点信息 -->
 	<arg name="goal_position_x" default="10"/>
 	<arg name="goal_position_y" default="0"/>
-	<arg name="goal_position_z" default="0.849"/>
+	<arg name="goal_position_z" default="0.8115"/>
 	<arg name="goal_yaw" default="0"/>
 
 	<node pkg="global_body_planner" type="state_publisher" name="state_publisher" output="screen" >
